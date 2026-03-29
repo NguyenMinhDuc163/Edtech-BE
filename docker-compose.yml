@@ -10,7 +10,7 @@ services:
     image: nguyenduc1603/edtech-be:1.0.12
     container_name: edtechbackend
     ports:
-      - "3000:3000"
+      - "3331:3000"
     env_file:
       - .env
     environment:
