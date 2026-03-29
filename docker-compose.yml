@@ -7,8 +7,13 @@ services:
 #      args:
 #        - NODE_ENV=production
 
-    image: nguyenduc1603/edtech-be:1.0.12
+    image: nguyenduc1603/edtech-be:latest
     container_name: edtechbackend
+
+    # config container truy cập host qua host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     ports:
       - "3331:3000"
     env_file:
