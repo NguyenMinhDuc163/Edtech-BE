@@ -18,8 +18,8 @@ import { SubmitQuizDto } from "../../schema/dtos/submit-quiz.dto";
 import { MasteryService } from "src/services/mastery.service";
 // import { firstValueFrom } from "rxjs";
 // import { HttpService } from "@nestjs/axios";
-// import { SystemParameterService } from "src/services/system-parameter.service";
-import { AI_PROVIDER } from "src/config/ai-provider";
+import { SystemParameterService } from "src/services/system-parameter.service";
+import { AI_PROVIDER, AI_MODEL_DEFAULT, AI_MODEL_PARAM_KEY } from "src/config/ai-provider";
 import { buildAdaptiveMessages, AdaptiveContext } from "src/utils/prompt-builder";
 
 @Controller("student/quiz")
@@ -28,8 +28,8 @@ export class StudentQuizController {
   constructor(
     private readonly quizService: QuizService,
     private readonly masteryService: MasteryService,
+    private readonly systemParameterService: SystemParameterService,
     // private readonly httpService: HttpService,
-    // private systemParameterService: SystemParameterService,
   ) { }
 
   // ── Gọi third-party AI theo OpenAI-compatible format ──────────────────────
@@ -90,6 +90,11 @@ export class StudentQuizController {
 
     const messages = buildAdaptiveMessages(adaptiveCtx);
 
+    if (!AI_PROVIDER.baseUrl || !AI_PROVIDER.apiKey) {
+      throw new Error('Thiếu cấu hình AI_BASE_URL hoặc AI_API_KEY trong biến môi trường');
+    }
+
+    const model = await this.systemParameterService.getValue(AI_MODEL_PARAM_KEY, AI_MODEL_DEFAULT);
     const url = `${AI_PROVIDER.baseUrl}${AI_PROVIDER.chatEndpoint}`;
     const response = await fetch(url, {
       method: 'POST',
@@ -98,7 +103,7 @@ export class StudentQuizController {
         'Authorization': `Bearer ${AI_PROVIDER.apiKey}`,
       },
       body: JSON.stringify({
-        model: AI_PROVIDER.model,
+        model,
         messages,
         max_tokens: 256,
         temperature: 0,

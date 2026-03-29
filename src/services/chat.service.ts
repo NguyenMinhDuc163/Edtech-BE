@@ -9,7 +9,7 @@ import { ChatSession } from '../schema/entities/chat-session.entity';
 import { ChatMessage, ChatRole } from '../schema/entities/chat-message.entity';
 import { Course } from '../schema/entities/course.entity';
 import { CourseContent } from '../schema/entities/course-content.entity';
-import { AI_PROVIDER } from '../config/ai-provider';
+import { AI_PROVIDER, AI_MODEL_DEFAULT, AI_MODEL_PARAM_KEY } from '../config/ai-provider';
 import {
     OpenAiMessage,
     buildChatMessages,
@@ -48,9 +48,14 @@ export class ChatService {
         options: { max_tokens?: number; temperature?: number; top_p?: number } = {},
     ): Promise<string> {
         const url = `${AI_PROVIDER.baseUrl}${AI_PROVIDER.chatEndpoint}`;
+        const model = await this.systemParamService.getValue(AI_MODEL_PARAM_KEY, AI_MODEL_DEFAULT);
+
+        if (!AI_PROVIDER.baseUrl || !AI_PROVIDER.apiKey) {
+            throw new InternalServerErrorException('Thiếu cấu hình AI_BASE_URL hoặc AI_API_KEY trong biến môi trường');
+        }
 
         const body = {
-            model: AI_PROVIDER.model,
+            model,
             messages,
             max_tokens: options.max_tokens ?? 2048,
             temperature: options.temperature ?? 0.3,

@@ -68,84 +68,84 @@ jobs:
           cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
           cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
 
-  deploy:
-    name: Deploy to Server
-    needs: build-and-push
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Copy docker-compose.yml to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          source: "docker-compose.yml"
-          target: ${{ env.DEPLOY_PATH }}
-
-      - name: Deploy to server via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
-          VERSION: ${{ needs.build-and-push.outputs.version }}
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          SERVICE_NAME: ${{ env.SERVICE_NAME }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          envs: DOCKER_IMAGE,VERSION,DEPLOY_PATH,SERVICE_NAME
-          script: |
-            set -e
-            cd ${DEPLOY_PATH}
-
-            echo "Pulling new image: ${DOCKER_IMAGE}:${VERSION}"
-            docker pull ${DOCKER_IMAGE}:${VERSION}
-
-            echo "Updating docker-compose.yml with new version"
-            sed -i "s|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${VERSION}|g" docker-compose.yml
-
-            echo "Stopping old container"
-            docker compose down
-
-            echo "Starting new container"
-            docker compose up -d
-
-            echo "Waiting for container to be healthy..."
-            sleep 10
-
-            echo "Checking container status"
-            docker compose ps
-
-            echo "Cleaning up old images"
-            docker image prune -af --filter "until=48h"
-
-            echo "Deployment completed successfully!"
-
-      - name: Verify deployment
-        uses: appleboy/ssh-action@v1.2.0
-        env:
-          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          SERVICE_NAME: ${{ env.SERVICE_NAME }}
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          port: 22
-          envs: DEPLOY_PATH,SERVICE_NAME
-          script: |
-            cd ${DEPLOY_PATH}
-
-            echo "Checking if container is running..."
-            if [ "$(docker compose ps -q ${SERVICE_NAME})" ]; then
-              echo "[SUCCESS] Container is running"
-              docker compose logs --tail=50 ${SERVICE_NAME}
-            else
-              echo "[ERROR] Container is not running!"
-              exit 1
-            fi
+#  deploy:
+#    name: Deploy to Server
+#    needs: build-and-push
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Checkout code
+#        uses: actions/checkout@v4
+#
+#      - name: Copy docker-compose.yml to server
+#        uses: appleboy/scp-action@v0.1.7
+#        with:
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USER }}
+#          key: ${{ secrets.SERVER_SSH_KEY }}
+#          port: 22
+#          source: "docker-compose.yml"
+#          target: ${{ env.DEPLOY_PATH }}
+#
+#      - name: Deploy to server via SSH
+#        uses: appleboy/ssh-action@v1.2.0
+#        env:
+#          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+#          VERSION: ${{ needs.build-and-push.outputs.version }}
+#          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+#          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+#        with:
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USER }}
+#          key: ${{ secrets.SERVER_SSH_KEY }}
+#          port: 22
+#          envs: DOCKER_IMAGE,VERSION,DEPLOY_PATH,SERVICE_NAME
+#          script: |
+#            set -e
+#            cd ${DEPLOY_PATH}
+#
+#            echo "Pulling new image: ${DOCKER_IMAGE}:${VERSION}"
+#            docker pull ${DOCKER_IMAGE}:${VERSION}
+#
+#            echo "Updating docker-compose.yml with new version"
+#            sed -i "s|image: ${DOCKER_IMAGE}:.*|image: ${DOCKER_IMAGE}:${VERSION}|g" docker-compose.yml
+#
+#            echo "Stopping old container"
+#            docker compose down
+#
+#            echo "Starting new container"
+#            docker compose up -d
+#
+#            echo "Waiting for container to be healthy..."
+#            sleep 10
+#
+#            echo "Checking container status"
+#            docker compose ps
+#
+#            echo "Cleaning up old images"
+#            docker image prune -af --filter "until=48h"
+#
+#            echo "Deployment completed successfully!"
+#
+#      - name: Verify deployment
+#        uses: appleboy/ssh-action@v1.2.0
+#        env:
+#          DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
+#          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+#        with:
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USER }}
+#          key: ${{ secrets.SERVER_SSH_KEY }}
+#          port: 22
+#          envs: DEPLOY_PATH,SERVICE_NAME
+#          script: |
+#            cd ${DEPLOY_PATH}
+#
+#            echo "Checking if container is running..."
+#            if [ "$(docker compose ps -q ${SERVICE_NAME})" ]; then
+#              echo "[SUCCESS] Container is running"
+#              docker compose logs --tail=50 ${SERVICE_NAME}
+#            else
+#              echo "[ERROR] Container is not running!"
+#              exit 1
+#            fi
