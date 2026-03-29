@@ -194,16 +194,9 @@ export class ChatService {
             return rows;
         }
 
-        // Không có context cụ thể → full-text search toàn bộ
-        const rows = await this.dataSource.query(
-            `SELECT chunk_text, start_time, end_time
-             FROM transcript_chunks
-             WHERE chunk_text_tsv @@ plainto_tsquery('simple', $1)
-             ORDER BY ts_rank(chunk_text_tsv, plainto_tsquery('simple', $1)) DESC
-             LIMIT $2`,
-            [query, k],
-        );
-        return rows;
+        // Không truyền course_id/content_id thì không dùng RAG.
+        // Trả về rỗng để aiChat đi nhánh chat bình thường.
+        return [];
     }
 
     // ── Lấy lịch sử chat từ DB (tương đương get_history trong notebook) ────
