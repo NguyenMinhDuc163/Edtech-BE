@@ -16,9 +16,7 @@ export class ChatController {
     @HttpCode(200)
     @UseGuards(OptionalJwtAuthGuard)
     async chat(@Body() chatDto: ChatDto) {
-        const result = await this.chatService.chat(chatDto);
-
-        return result;
+        return this.chatService.chat(chatDto);
     }
 
     @Post('public')
@@ -39,9 +37,51 @@ export class ChatController {
     @UseGuards(OptionalJwtAuthGuard)
     async aiChat(@Body() aiChatDto: AiChatDto, @Req() req: any) {
         const userId = req.user?.id || null;
-        const result = await this.chatService.aiChat(aiChatDto, userId);
+        return this.chatService.aiChat(aiChatDto, userId);
+    }
 
-        return result;
+    // ── Legacy routes từ server Colab cũ → map về aiChat ──────────────────
+    // Client gọi /finetune, /base, /base-rag, /finetune-rag đều có body { prompt, session_id?, course_id?, content_id? }
+    // khớp AiChatDto nên forward thẳng, không cần transform.
+    @Post('finetune')
+    @HttpCode(200)
+    @UseGuards(OptionalJwtAuthGuard)
+    async legacyFinetune(@Body() aiChatDto: AiChatDto, @Req() req: any) {
+        const userId = req.user?.id || null;
+        return this.chatService.aiChat(aiChatDto, userId);
+    }
+
+    @Post('base')
+    @HttpCode(200)
+    @UseGuards(OptionalJwtAuthGuard)
+    async legacyBase(@Body() aiChatDto: AiChatDto, @Req() req: any) {
+        const userId = req.user?.id || null;
+        return this.chatService.aiChat(aiChatDto, userId);
+    }
+
+    @Post('base-rag')
+    @HttpCode(200)
+    @UseGuards(OptionalJwtAuthGuard)
+    async legacyBaseRag(@Body() aiChatDto: AiChatDto, @Req() req: any) {
+        const userId = req.user?.id || null;
+        return this.chatService.aiChat(aiChatDto, userId);
+    }
+
+    @Post('finetune-rag')
+    @HttpCode(200)
+    @UseGuards(OptionalJwtAuthGuard)
+    async legacyFinetuneRag(@Body() aiChatDto: AiChatDto, @Req() req: any) {
+        const userId = req.user?.id || null;
+        return this.chatService.aiChat(aiChatDto, userId);
+    }
+
+    // ── Legacy /generate-syllabus → map về generateSyllabus ───────────────
+    @Post('generate-syllabus')
+    @HttpCode(200)
+    @UseGuards(OptionalJwtAuthGuard)
+    async legacyGenerateSyllabus(@Body() dto: GenerateSyllabusDto, @Req() req: any) {
+        const userId = req.user?.id || null;
+        return this.chatService.generateSyllabus(dto, userId);
     }
 
     @Post('syllabus')
@@ -49,9 +89,7 @@ export class ChatController {
     @UseGuards(OptionalJwtAuthGuard)
     async generateSyllabus(@Body() dto: GenerateSyllabusDto, @Req() req: any) {
         const userId = req.user?.id || null;
-        const result = await this.chatService.generateSyllabus(dto, userId);
-
-        return result;
+        return this.chatService.generateSyllabus(dto, userId);
     }
 
     @Get('sessions')
