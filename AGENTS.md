@@ -49,13 +49,20 @@ NestJS (v11) with TypeScript, PostgreSQL via TypeORM, JWT auth via `passport-jwt
 - `src/schema/dtos/` — DTOs validated with `class-validator`.
 - `src/schema/migrations/` — TypeORM migration files; datasource config is `src/schema/datasource.ts`.
 - `src/common/` — Cross-cutting concerns:
-    - `guards/` — `JwtAuthGuard` (global, uses `@Public()` decorator to opt-out), `RolesGuard` (use `@Roles(SystemRole.ADMIN)` decorator).
-    - `interceptors/` — `ResponseInterceptor` wraps all responses as `{ status, message, data }`. `ApiLogInterceptor` records every request to the DB.
-    - `filters/` — `AllExceptionsFilter` for uniform error responses.
-    - `decorators/` — `@Public()` to bypass JWT guard.
+  - `guards/` — `JwtAuthGuard` (global, uses `@Public()` decorator to opt-out), `RolesGuard` (use `@Roles(SystemRole.ADMIN)` decorator).
+  - `interceptors/` — `ResponseInterceptor` wraps all responses as `{ status, message, data }`. `ApiLogInterceptor` records every request to the DB.
+  - `filters/` — `AllExceptionsFilter` for uniform error responses.
+  - `decorators/` — `@Public()` to bypass JWT guard.
 - `src/config/typeorm.config.ts` — DB connection. `synchronize: false`; always use migrations.
 - `src/constants/` — Shared enums, response messages, storage keys.
 - `src/utils/` — Standalone utilities: `cosine-similarity.ts`, `jaro-winkler.ts`, `mastery-calculator.ts`, `excel-question-parser.ts`.
+
+### Base Response Rules
+- The API always returns HTTP 200 to clients. Do not use the HTTP status code as the client-facing success/error signal.
+- For thrown `HttpException`s, `AllExceptionsFilter` keeps HTTP 200 and puts the real error status in the response body (`status`), with `message` and `data`.
+- For normal business responses, follow the existing controller convention: return an object shaped like `{ code, message, data }` (plus pagination/metadata when the nearby API already does so).
+- Do not invent new response shapes for a single endpoint. Match the closest existing API in the same controller/domain.
+- For delete/update actions, prefer a meaningful Vietnamese `message` and set `data: null` when there is no payload to return.
 
 ### Authentication & Authorization
 - JWT access tokens (15 min expiry) + refresh tokens stored in DB (`RefreshToken` entity).
