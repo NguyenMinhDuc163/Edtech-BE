@@ -107,8 +107,9 @@ export class UsersController {
 
     @Post('delete')
     @HttpCode(200)
-    @Roles(SystemRole.ADMIN)
-    async deleteUser(@Body('userId') userId: string) {
+    @Roles(SystemRole.STUDENT, SystemRole.TEACHER, SystemRole.ADMIN)
+    async deleteUser(@Req() req: Request) {
+        const userId = (req as any).user?.id;
         return await this.userService.deleteUser(userId);
     }
 

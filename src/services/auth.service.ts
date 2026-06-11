@@ -112,6 +112,9 @@ export class AuthService {
         if (!isPasswordValid) {
             throw new UnauthorizedException('Tài khoản hoặc mật khẩu không đúng');
         }
+        if (!user.is_active) {
+            throw new UnauthorizedException('Tài khoản đã bị xóa. Vui lòng liên hệ quản trị viên qua email ngminhduc1603@gmail.com để được hỗ trợ khôi phục tài khoản.');
+        }
         return user;
     }
 

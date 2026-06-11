@@ -37,14 +37,11 @@ export class UserService {
         private readonly storageService: StorageService,
     ) { }
 
-    async findByUsername(username: string): Promise<User> {
+    async findByUsername(username: string): Promise<User | null> {
         const user = await this.userRepository.findOne({
             where: { username },
             relations: ["roles", "roles.role"],
         });
-        if (!user) {
-            throw new Error('Không tìm thấy người dùng');
-        }
         return user;
     }
 
@@ -432,21 +429,33 @@ export class UserService {
             throw new NotFoundException('Không tìm thấy người dùng');
         }
 
+        if (!user.is_active) {
+            return {
+                code: 200,
+                message: 'Tài khoản người dùng đã được xóa trước đó',
+                data: null,
+            };
+        }
+
         const qr = this.dataSource.createQueryRunner();
         await qr.connect();
         await qr.startTransaction();
 
         try {
-            await qr.manager.delete(UserCertificate, { user: { id: userId } });
+            user.is_active = false;
+            await qr.manager.save(User, user);
             await qr.manager.delete(RefreshToken, { userId: userId });
-            await qr.manager.delete(User, { id: userId });
 
             await qr.commitTransaction();
-            return { message: 'Xóa người dùng thành công' };
+            return {
+                code: 200,
+                message: 'Xóa tài khoản người dùng thành công',
+                data: null,
+            };
         } catch (error) {
             await qr.rollbackTransaction();
             console.error('Lỗi khi xóa người dùng:', error);
-            throw new InternalServerErrorException('Không thể xóa người dùng');
+            throw new InternalServerErrorException('Không thể xóa tài khoản người dùng');
         } finally {
             await qr.release();
         }
