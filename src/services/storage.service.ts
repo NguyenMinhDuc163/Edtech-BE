@@ -1,186 +1,291 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { BlobServiceClient, ContainerClient, generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } from '@azure/storage-blob';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 dotenv.config();
 
+type ParsedObjectLocation = {
+  bucket: string;
+  key: string;
+};
+
 @Injectable()
 export class StorageService {
-  private getConnectionString(): string {
-    const protocol = process.env.AZURE_PROTOCOL;
-    const accountName = process.env.AZURE_ACCOUNT_NAME;
-    const accountKey = process.env.AZURE_ACCOUNT_KEY;
-    const endpointSuffix = process.env.AZURE_ENDPOINT_SUFFIX;
+  private s3Client?: S3Client;
 
-    if (!protocol || !accountName || !accountKey || !endpointSuffix) {
-      throw new BadRequestException('Thiếu cấu hình Azure Blob trong biến môi trường');
+  private getBucketName(): string {
+    const bucket = process.env.R2_BUCKET_NAME || '';
+    if (!bucket) {
+      throw new BadRequestException('R2_BUCKET_NAME chưa được cấu hình');
     }
-
-    return `DefaultEndpointsProtocol=${protocol};AccountName=${accountName};AccountKey=${accountKey};EndpointSuffix=${endpointSuffix}`;
+    return bucket;
   }
 
-  private getContainerName(override?: string): string {
-    return override || process.env.CONTAINER_NAME || '';
+  private getEndpoint(): string {
+    const accountId = process.env.R2_ACCOUNT_ID;
+    if (!accountId) {
+      throw new BadRequestException('R2_ACCOUNT_ID chưa được cấu hình');
+    }
+
+    return `https://${accountId}.r2.cloudflarestorage.com`;
   }
 
-  private async getContainerClient(containerName?: string): Promise<ContainerClient> {
-    const name = this.getContainerName(containerName);
-    if (!name) {
-      throw new BadRequestException('CONTAINER_NAME chưa được cấu hình');
+  private getClient(): S3Client {
+    if (this.s3Client) return this.s3Client;
+
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+
+    if (!accessKeyId || !secretAccessKey) {
+      throw new BadRequestException('Thiếu R2_ACCESS_KEY_ID hoặc R2_SECRET_ACCESS_KEY');
     }
-    const connectionString = this.getConnectionString();
-    const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
-    const containerClient = blobServiceClient.getContainerClient(name);
-    const exists = await containerClient.exists();
-    if (!exists) {
-      await containerClient.create();
-    }
-    return containerClient;
+
+    this.s3Client = new S3Client({
+      region: 'auto',
+      endpoint: this.getEndpoint(),
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId,
+        secretAccessKey,
+      },
+    });
+
+    return this.s3Client;
   }
 
-  async upload(buffer: Buffer, filename: string, contentType?: string, containerName?: string) {
+  private getFolderName(override?: string): string {
+    return (override || '').replace(/^\/+|\/+$/g, '');
+  }
+
+  private buildKey(filename: string, folderName?: string): string {
+    if (!filename) {
+      throw new BadRequestException('Thiếu file để upload');
+    }
+
+    const normalizedFilename = filename.replace(/^\/+/, '');
+    const folder = this.getFolderName(folderName);
+
+    if (!folder) return normalizedFilename;
+    if (normalizedFilename === folder || normalizedFilename.startsWith(`${folder}/`)) {
+      return normalizedFilename;
+    }
+
+    return `${folder}/${normalizedFilename}`;
+  }
+
+  private getPublicBaseUrl(): string | null {
+    return process.env.R2_PUBLIC_URL?.replace(/\/+$/, '') || null;
+  }
+
+  private getStableUrl(key: string): string {
+    const publicBaseUrl = this.getPublicBaseUrl();
+    if (publicBaseUrl) {
+      return `${publicBaseUrl}/${this.encodeKey(key)}`;
+    }
+
+    return `r2://${this.getBucketName()}/${key}`;
+  }
+
+  private encodeKey(key: string): string {
+    return key.split('/').map((part) => encodeURIComponent(part)).join('/');
+  }
+
+  async upload(buffer: Buffer, filename: string, contentType?: string, folderName?: string) {
     if (!buffer || !filename) {
       throw new BadRequestException('Thiếu file để upload');
     }
 
-    
-    const detectedContentType = this.getContentTypeFromFilename(filename);
+    const key = this.buildKey(filename, folderName);
+    const detectedContentType = contentType || this.getContentTypeFromFilename(filename);
+    const bucket = this.getBucketName();
 
-    const containerClient = await this.getContainerClient(containerName);
-    const blockBlobClient = containerClient.getBlockBlobClient(filename);
+    await this.getClient().send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: detectedContentType,
+      }),
+    );
 
-    const uploadOptions: any = {
-      blobHTTPHeaders: { blobContentType: detectedContentType }
-    };
-    await blockBlobClient.uploadData(buffer, uploadOptions);
+    const props = await this.getClient().send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+    );
 
-    
-    await blockBlobClient.setHTTPHeaders({ 
-      blobContentType: detectedContentType 
-    });
-
-    const props = await blockBlobClient.getProperties();
-    const sasUrl = await this.generateSasUrl(blockBlobClient, containerName);
+    const stableUrl = this.getStableUrl(key);
+    const signedUrl = await this.generateSignedUrl(bucket, key, undefined, 24);
 
     return {
       blobName: filename,
-      url: blockBlobClient.url,
-      sasUrl: sasUrl,
-      contentType: detectedContentType, 
-      contentLength: props.contentLength ?? buffer.length,
-      etag: props.etag || null,
-      lastModified: props.lastModified || null,
-      container: containerClient.containerName,
+      key,
+      url: stableUrl,
+      sasUrl: signedUrl,
+      contentType: props.ContentType || detectedContentType,
+      contentLength: props.ContentLength ?? buffer.length,
+      etag: props.ETag || null,
+      lastModified: props.LastModified || null,
+      container: folderName || this.getFolderName() || null,
+      bucket,
     };
   }
 
-  async getInfo(blobName: string, containerName?: string) {
+  async getInfo(blobName: string, folderName?: string) {
     if (!blobName) {
       throw new BadRequestException('Thiếu blobName');
     }
-    const containerClient = await this.getContainerClient(containerName);
-    const client = containerClient.getBlockBlobClient(blobName);
-    const exists = await client.exists();
-    if (!exists) {
-      throw new BadRequestException('Blob không tồn tại');
+
+    const bucket = this.getBucketName();
+    const key = this.buildKey(blobName, folderName);
+
+    let props;
+    try {
+      props = await this.getClient().send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        }),
+      );
+    } catch (error) {
+      throw new BadRequestException('Object không tồn tại trên R2');
     }
-    const props = await client.getProperties();
-    const sasUrl = await this.generateSasUrl(client, containerName);
-    
+
+    const stableUrl = this.getStableUrl(key);
+    const signedUrl = await this.generateSignedUrl(bucket, key, undefined, 24);
+
     return {
       blobName,
-      url: client.url,
-      sasUrl: sasUrl,
-      contentType: props.contentType || null,
-      contentLength: props.contentLength ?? null,
-      etag: props.etag || null,
-      lastModified: props.lastModified || null,
-      container: containerClient.containerName,
+      key,
+      url: stableUrl,
+      sasUrl: signedUrl,
+      contentType: props.ContentType || null,
+      contentLength: props.ContentLength ?? null,
+      etag: props.ETag || null,
+      lastModified: props.LastModified || null,
+      container: folderName || this.getFolderName() || null,
+      bucket,
     };
-  }
-
-  private async generateSasUrl(blockBlobClient: any, containerName?: string): Promise<string> {
-    const accountName = process.env.AZURE_ACCOUNT_NAME;
-    const accountKey = process.env.AZURE_ACCOUNT_KEY;
-    
-    if (!accountName || !accountKey) {
-      throw new BadRequestException('Thiếu cấu hình Azure account name/key');
-    }
-
-    const container = this.getContainerName(containerName);
-    const credential = new StorageSharedKeyCredential(accountName, accountKey);
-    
-    const sasOptions = {
-      containerName: container,
-      blobName: blockBlobClient.name,
-      permissions: BlobSASPermissions.parse('r'), 
-      startsOn: new Date(),
-      expiresOn: new Date(new Date().valueOf() + 24 * 60 * 60 * 1000), 
-    };
-
-    const sasToken = generateBlobSASQueryParameters(sasOptions, credential).toString();
-    return `${blockBlobClient.url}?${sasToken}`;
   }
 
   /**
-   * Generate SAS URL từ blob URL cố định
-   * @param blobUrl URL blob cố định (không có SAS token)
-   * @param fileType Loại file để xác định thời hạn
-   * @param expiryHours Thời hạn tùy chỉnh (giờ), nếu không truyền sẽ tự động theo fileType
+   * Generate signed URL tu URL co dinh dang luu trong DB.
+   *
+   * Tuong thich nguoc voi URL Azure cu:
+   * https://<account>.blob.core.windows.net/<container>/<blob>
+   * se duoc map sang key R2: <container>/<blob>.
    */
   async generateSasUrlFromUrl(blobUrl: string, fileType?: string, expiryHours?: number): Promise<string> {
-    const accountName = process.env.AZURE_ACCOUNT_NAME;
-    const accountKey = process.env.AZURE_ACCOUNT_KEY;
-
-    if (!accountName || !accountKey) {
-      throw new BadRequestException('Thiếu cấu hình Azure account name/key');
+    if (!blobUrl) {
+      throw new BadRequestException('Thiếu URL file');
     }
 
-    // Parse URL để lấy container và blob name
-    const url = new URL(blobUrl);
-    const pathParts = url.pathname.split('/').filter(p => p);
-    if (pathParts.length < 2) {
-      throw new BadRequestException('URL blob không hợp lệ');
+    const location = this.parseObjectLocation(blobUrl);
+    if (!location) {
+      return blobUrl;
     }
 
-    const containerName = pathParts[0]!; // Non-null assertion vì đã check length
-    const blobName = pathParts.slice(1).join('/');
+    return this.generateSignedUrl(location.bucket, location.key, fileType, expiryHours);
+  }
 
-    if (!containerName || !blobName) {
-      throw new BadRequestException('Container hoặc blob name không hợp lệ');
+  private async generateSignedUrl(
+    bucket: string,
+    key: string,
+    fileType?: string,
+    expiryHours?: number,
+  ): Promise<string> {
+    const expiresIn = this.getExpirySeconds(fileType, expiryHours);
+
+    return getSignedUrl(
+      this.getClient(),
+      new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      }),
+      { expiresIn },
+    );
+  }
+
+  private parseObjectLocation(rawUrl: string): ParsedObjectLocation | null {
+    const bucket = this.getBucketName();
+    const trimmed = rawUrl.trim();
+
+    if (!trimmed) return null;
+
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+      return { bucket, key: trimmed.replace(/^\/+/, '') };
     }
 
-    // Xác định thời hạn dựa trên loại file
-    let expiryTime: number;
-    if (expiryHours) {
-      expiryTime = expiryHours * 60 * 60 * 1000;
-    } else {
-      expiryTime = this.getExpiryTimeByFileType(fileType);
+    const url = new URL(trimmed);
+
+    if (url.protocol === 'r2:') {
+      const r2Bucket = url.hostname || bucket;
+      const key = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+      return key ? { bucket: r2Bucket, key } : null;
     }
 
-    const credential = new StorageSharedKeyCredential(accountName, accountKey);
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return null;
+    }
 
-    const now = new Date();
-    const startTime = new Date(now.valueOf() - 60 * 60 * 1000); // 1 giờ trước để tránh clock skew
+    const pathParts = url.pathname.split('/').filter(Boolean).map((part) => decodeURIComponent(part));
+    if (pathParts.length === 0) return null;
 
-    const sasOptions = {
-      containerName: containerName,
-      blobName: blobName,
-      permissions: BlobSASPermissions.parse('r'), // Read only
-      startsOn: startTime,
-      expiresOn: new Date(now.valueOf() + expiryTime),
-    };
+    if (url.hostname.endsWith('.blob.core.windows.net')) {
+      return { bucket, key: pathParts.join('/') };
+    }
 
-    const sasToken = generateBlobSASQueryParameters(sasOptions, credential).toString();
+    const endpointHost = new URL(this.getEndpoint()).hostname;
+    const publicBaseUrl = this.getPublicBaseUrl();
+    const publicHost = publicBaseUrl ? new URL(publicBaseUrl).hostname : null;
 
-    // Remove existing query params from URL and add SAS token
-    const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
-    return `${baseUrl}?${sasToken}`;
+    if (url.hostname === endpointHost) {
+      if (pathParts[0] === bucket && pathParts.length > 1) {
+        return { bucket, key: pathParts.slice(1).join('/') };
+      }
+
+      return { bucket, key: pathParts.join('/') };
+    }
+
+    if (publicBaseUrl && publicHost && url.hostname === publicHost) {
+      const publicBasePathParts = new URL(publicBaseUrl).pathname
+        .split('/')
+        .filter(Boolean)
+        .map((part) => decodeURIComponent(part));
+      const keyParts = this.stripPrefix(pathParts, publicBasePathParts);
+      return keyParts.length ? { bucket, key: keyParts.join('/') } : null;
+    }
+
+    return null;
+  }
+
+  private stripPrefix(parts: string[], prefix: string[]): string[] {
+    if (prefix.length === 0) return parts;
+    const hasPrefix = prefix.every((part, index) => parts[index] === part);
+    return hasPrefix ? parts.slice(prefix.length) : parts;
   }
 
   /**
-   * Xác định thời hạn SAS dựa trên loại file
+   * R2/S3 presigned URLs are safest within the SigV4 7-day limit.
+   */
+  private getExpirySeconds(fileType?: string, expiryHours?: number): number {
+    const maxAge = 7 * 24 * 60 * 60;
+    const requestedSeconds = expiryHours
+      ? expiryHours * 60 * 60
+      : Math.floor(this.getExpiryTimeByFileType(fileType) / 1000);
+
+    return Math.max(1, Math.min(requestedSeconds, maxAge));
+  }
+
+  /**
    * Video: 3 giờ, Document: 1 giờ, Image: 30 phút, Audio: 2 giờ, Other: 1 giờ
    */
   private getExpiryTimeByFileType(fileType?: string): number {
@@ -189,16 +294,16 @@ export class StorageService {
 
     switch (fileType?.toLowerCase()) {
       case 'video':
-        return 3 * HOUR; // 3 giờ cho video
+        return 3 * HOUR;
       case 'audio':
-        return 2 * HOUR; // 2 giờ cho audio
+        return 2 * HOUR;
       case 'pdf':
       case 'document':
-        return 1 * HOUR; // 1 giờ cho document
+        return 1 * HOUR;
       case 'image':
-        return 30 * MINUTE; // 30 phút cho image
+        return 30 * MINUTE;
       default:
-        return 1 * HOUR; // Mặc định 1 giờ
+        return 1 * HOUR;
     }
   }
 
@@ -206,7 +311,6 @@ export class StorageService {
     const ext = path.extname(filename).toLowerCase();
 
     const mimeTypes: { [key: string]: string } = {
-
       '.mp4': 'video/mp4',
       '.avi': 'video/x-msvideo',
       '.mov': 'video/quicktime',
@@ -215,13 +319,11 @@ export class StorageService {
       '.webm': 'video/webm',
       '.mkv': 'video/x-matroska',
 
-
       '.mp3': 'audio/mpeg',
       '.wav': 'audio/wav',
       '.ogg': 'audio/ogg',
       '.aac': 'audio/aac',
       '.m4a': 'audio/mp4',
-
 
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
@@ -230,7 +332,6 @@ export class StorageService {
       '.bmp': 'image/bmp',
       '.webp': 'image/webp',
       '.svg': 'image/svg+xml',
-
 
       '.pdf': 'application/pdf',
       '.doc': 'application/msword',
@@ -242,13 +343,11 @@ export class StorageService {
       '.txt': 'text/plain',
       '.rtf': 'application/rtf',
 
-
       '.zip': 'application/zip',
       '.rar': 'application/x-rar-compressed',
       '.7z': 'application/x-7z-compressed',
       '.tar': 'application/x-tar',
       '.gz': 'application/gzip',
-
 
       '.js': 'application/javascript',
       '.css': 'text/css',
@@ -260,5 +359,3 @@ export class StorageService {
     return mimeTypes[ext] || 'application/octet-stream';
   }
 }
-
-
