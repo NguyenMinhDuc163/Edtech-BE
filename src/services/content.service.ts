@@ -414,7 +414,7 @@ export class ContentService {
             return {
                 ...content,
                 isPreview,
-                files: content.files?.map(file => {
+                files: content.files?.filter(file => file.is_active).map(file => {
                     // Xác định file có phải preview không
                     const fileIsPreview = isPreview || file.is_preview === 'Y';
 

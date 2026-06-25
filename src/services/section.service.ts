@@ -214,7 +214,7 @@ export class SectionService {
     async findAllPublicByCourse(courseId: string, accessLevel: string) {
         if (accessLevel === 'FULL') {
             return await this.sectionRepo.find({
-                where: { course_id: courseId },
+                where: { course_id: courseId, is_active: true },
                 relations: ['course'],
                 order: { order_index: 'ASC' },
             });
@@ -224,10 +224,12 @@ export class SectionService {
             where: [
                 {
                     course_id: courseId,
+                    is_active: true,
                     is_preview: 'Y'
                 },
                 {
                     course_id: courseId,
+                    is_active: true,
                     course: {
                         is_preview: 'Y'
                     }
@@ -243,7 +245,8 @@ export class SectionService {
             return await this.sectionRepo.findOne({
                 where: {
                     section_id: sectionId,
-                    course_id: courseId
+                    course_id: courseId,
+                    is_active: true
                 },
                 relations: ['course'],
             });
@@ -254,11 +257,13 @@ export class SectionService {
                 {
                     section_id: sectionId,
                     course_id: courseId,
+                    is_active: true,
                     is_preview: 'Y'
                 },
                 {
                     section_id: sectionId,
                     course_id: courseId,
+                    is_active: true,
                     course: {
                         is_preview: 'Y'
                     }
