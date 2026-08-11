@@ -43,6 +43,9 @@ export class User {
     @Column({ type: "boolean", default: true })
     is_active!: boolean;
 
+    @Column({ type: "varchar", length: 1, default: "Y" })
+    is_ads!: string;
+
     @Column({ type: "varchar", length: 500, nullable: true })
     avatar_url!: string | null;
 

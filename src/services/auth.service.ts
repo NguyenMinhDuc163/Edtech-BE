@@ -26,7 +26,7 @@ export class AuthService {
         return instanceToPlain(user) as User;
     }
 
-    async login(loginDto: LoginDto, req: Request): Promise<{ access_token: string, refresh_token: string, user: any, isPayment: string }> {
+    async login(loginDto: LoginDto, req: Request): Promise<{ access_token: string, refresh_token: string, user: any, isPayment: string, isAds: string }> {
         const user = await this.validateUserCredentials(loginDto);
         const payload = {
             sub: user.id,
@@ -43,6 +43,7 @@ export class AuthService {
         await this.refreshTokenService.create(user.id, refresh_token, deviceInfo, ip);
 
         const isPayment = await this.systemParameterService.getValue('IS_PAYMENT', 'N', true);
+        const isAds = user.is_ads ?? 'Y';
 
         const profile = await this.userService.getProfileWithCertificates(user.id);
 
@@ -100,7 +101,7 @@ export class AuthService {
             certificates: certificatesWithSas.length > 0 ? certificatesWithSas : null,
         };
 
-        return { access_token, refresh_token, user: userInfo, isPayment };
+        return { access_token, refresh_token, user: userInfo, isPayment, isAds };
     }
 
     async validateUserCredentials(loginDto: LoginDto): Promise<User> {
