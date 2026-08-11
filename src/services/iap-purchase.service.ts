@@ -75,6 +75,7 @@ export class IapPurchaseService {
     const value = await this.systemParameterService.getValue(
       'MOBILE_IAP_ENABLED',
       'N',
+      true,
     );
     return value.trim().toUpperCase() === 'Y';
   }
