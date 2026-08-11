@@ -13,7 +13,14 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
-  app.use(json({ limit: '50mb' }));
+  app.use(
+    json({
+      limit: '50mb',
+      verify: (req: any, _res, buffer) => {
+        req.rawBody = Buffer.from(buffer);
+      },
+    }),
+  );
   app.use(urlencoded({ limit: '50mb', extended: true }));
   
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

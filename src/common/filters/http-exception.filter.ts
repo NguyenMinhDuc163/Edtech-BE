@@ -38,8 +38,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
             message
         });
 
-        // Luôn trả về HTTP 200, status code thực sự nằm trong body
-        response.status(200).json({
+        response.status(status).json({
             status,
             message,
             data: errors

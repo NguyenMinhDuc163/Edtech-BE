@@ -4,7 +4,8 @@ import {
     PrimaryGeneratedColumn,
     CreateDateColumn,
     UpdateDateColumn,
-    OneToMany
+    OneToMany,
+    Index,
 } from 'typeorm';
 import { UserRole } from './user-role.entity';
 import { Exclude } from 'class-transformer';
@@ -13,9 +14,18 @@ import { PendingChange } from './pending-change.entity';
 import { UserContentMastery } from './user-content-mastery.entity';
 
 @Entity('users')
+@Index('IDX_users_revenuecat_app_user_id', ['revenuecat_app_user_id'], {
+    unique: true,
+})
 export class User {
     @PrimaryGeneratedColumn('increment', { name: 'id', type: 'bigint' })
     id!: string;
+
+    @Column({
+        type: 'uuid',
+        default: () => 'gen_random_uuid()',
+    })
+    revenuecat_app_user_id!: string;
 
     @Column({ type: "varchar", length: 100 })
     username!: string;
@@ -75,4 +85,3 @@ export class User {
     @OneToMany(() => UserContentMastery, (m) => m.user)
     masteryRecords!: UserContentMastery[];
 }
-

@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { CourseCategory, CourseVisibility } from '../entities/course.entity';
 
 export class UpdateCourseDto {
@@ -55,6 +55,13 @@ export class UpdateCourseDto {
   @IsString()
   @MaxLength(500)
   thumbnailUrl?: string;
-}
 
+  @IsOptional()
+  @IsBoolean()
+  isPaid?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  mobileIapEnabled?: boolean;
+}
 

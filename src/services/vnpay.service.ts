@@ -73,7 +73,7 @@ export class VnpayService {
             vnp_OrderInfo: params.orderInfo,
             vnp_OrderType: 'other',
             vnp_Locale: 'vn',
-            vnp_ReturnUrl: this.returnUrl || params.returnUrl,
+            vnp_ReturnUrl: params.returnUrl || this.returnUrl,
             vnp_IpAddr: params.ipAddr,
             vnp_CreateDate: vnpCreateDate,
             vnp_ExpireDate: this.formatDate(expireDate),

@@ -7,7 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "start:dev": "nest start --watch",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && node --test test/*.test.js",
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
     "start": "nest start",
     "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",

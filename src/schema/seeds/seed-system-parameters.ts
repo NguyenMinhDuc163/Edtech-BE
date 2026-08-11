@@ -51,6 +51,18 @@ async function seedSystemParameters() {
             description: 'Đã hoàn tiền',
             function_name: 'PAYMENT_STATUS'
         },
+        {
+            param_key: 'MOBILE_IAP_ENABLED',
+            param_value: 'N',
+            description: 'Bật/tắt checkout IAP trên mobile; không thay đổi quyền học',
+            function_name: 'PAYMENT_CONFIG'
+        },
+        {
+            param_key: 'WEB_VNPAY_ENABLED',
+            param_value: 'Y',
+            description: 'Bật/tắt checkout VNPay trên web',
+            function_name: 'PAYMENT_CONFIG'
+        },
         
         // Preview Status
         {

@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../common/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -16,6 +16,10 @@ import { Request } from 'express';
 import { FilterResultsStudentDto } from '../../schema/dtos/filter-results.dto';
 import { QuizResultService } from '../../services/quiz-result.service';
 import { SystemParameterService } from '../../services/system-parameter.service';
+import { CourseAccessService } from '../../services/course-access.service';
+import { IapPurchaseService } from '../../services/iap-purchase.service';
+import { MasteryService } from '../../services/mastery.service';
+import { StorePlatform } from '../../schema/entities/course-store-product.entity';
 
 @Controller('student/courses')
 export class StudentCourseController {
@@ -30,14 +34,21 @@ export class StudentCourseController {
         private readonly questionBankRepo: Repository<QuestionBank>,
         private readonly quizResultService: QuizResultService,
         private readonly systemParamService: SystemParameterService,
+        private readonly courseAccessService: CourseAccessService,
+        private readonly iapPurchaseService: IapPurchaseService,
+        private readonly masteryService: MasteryService,
     ) {
     }
 
     @Get()
     @HttpCode(200)
     @UseGuards(OptionalJwtAuthGuard)
-    async findAllPublicCourses(@Req() req: Request) {
+    async findAllPublicCourses(
+        @Req() req: Request,
+        @Query('platform') platformValue?: string,
+    ) {
         const studentId = (req as any).user?.id ?? null;
+        const platform = this.parsePlatform(platformValue);
 
 
         const courses = await this.courseService.findAllPublic();
@@ -56,12 +67,18 @@ export class StudentCourseController {
                 }
 
 
+                const access = await this.courseAccessService.resolveAccess(studentId, course);
                 let accessStatus = 'NONE'; // NONE, FREE, PAID
                 if (registration && registration.payment_status === 'PAID') {
                     accessStatus = 'PAID';
                 } else {
                     accessStatus = 'FREE';
                 }
+                const purchase = await this.iapPurchaseService.getCoursePurchaseOption(
+                    course,
+                    studentId,
+                    platform,
+                );
 
                 let thumbnailSasUrl = null;
                 if (course.thumbnail_url) {
@@ -93,8 +110,11 @@ export class StudentCourseController {
                     thumbnailUrl: thumbnailSasUrl,
                     createdAt: course.created_at,
                     isPaid: course.is_paid,
+                    mobileIapEnabled: course.mobile_iap_enabled,
+                    accessLevel: access.accessLevel,
                     accessStatus, // NONE, FREE, PAID
                     progress: registration?.progress || 0,
+                    purchase,
                 };
             })
         );
@@ -118,8 +138,13 @@ export class StudentCourseController {
     @Get(':courseId')
     @HttpCode(200)
     @UseGuards(OptionalJwtAuthGuard)
-    async findCourseDetail(@Param('courseId') courseId: string, @Req() req: Request) {
+    async findCourseDetail(
+        @Param('courseId') courseId: string,
+        @Req() req: Request,
+        @Query('platform') platformValue?: string,
+    ) {
         const studentId = (req as any).user?.id ?? null;
+        const platform = this.parsePlatform(platformValue);
 
 
         const course = await this.courseService.findPublicById(courseId);
@@ -138,10 +163,8 @@ export class StudentCourseController {
         }
 
 
-        let accessLevel = 'FREE'; // FREE, FULL
-        if (registration && registration.payment_status === 'PAID') {
-            accessLevel = 'FULL';
-        }
+        const access = await this.courseAccessService.resolveAccess(studentId, course);
+        const accessLevel = access.accessLevel;
 
         const sections = await this.sectionService.findAllPublicByCourse(courseId, accessLevel);
 
@@ -236,7 +259,11 @@ export class StudentCourseController {
         }
 
         let daysLeftToCancel = 0;
-        if (registration && registration.purchase_date) {
+        if (
+            registration &&
+            registration.purchase_date &&
+            access.source === 'VNPAY'
+        ) {
             const cancelPeriodDays = await this.systemParamService.getNumber('COURSE_CANCEL_PERIOD_DAYS', 7);
             const purchaseTime = new Date(registration.purchase_date).getTime();
             const currentTime = Date.now();
@@ -246,6 +273,12 @@ export class StudentCourseController {
             daysLeftToCancel = remainingDays > 0 ? remainingDays : 0;
         }
 
+        const purchase = await this.iapPurchaseService.getCoursePurchaseOption(
+            course,
+            studentId,
+            platform,
+        );
+
         return {
             courseId: String(course.course_id),
             title: course.title,
@@ -253,6 +286,7 @@ export class StudentCourseController {
             price: course.price,
             currency: course.currency,
             isPaid: course.is_paid,
+            mobileIapEnabled: course.mobile_iap_enabled,
             courseDuration: course.course_duration,
             teacher: course.teacher,
             thumbnailUrl: thumbnailSasUrl,
@@ -261,6 +295,7 @@ export class StudentCourseController {
             progress: registration?.progress || 0,
             daysLeftToCancel,
             sections: sectionsWithContents,
+            purchase,
         };
     }
 
@@ -291,10 +326,8 @@ export class StudentCourseController {
         }
 
 
-        let accessLevel = 'FREE';
-        if (registration && registration.payment_status === 'PAID') {
-            accessLevel = 'FULL';
-        }
+        const access = await this.courseAccessService.resolveAccess(studentId, course);
+        const accessLevel = access.accessLevel;
 
         const section = await this.sectionService.findPublicById(sectionId, courseId, accessLevel);
         if (!section) {
@@ -351,6 +384,28 @@ export class StudentCourseController {
             orderIndex: section.order_index,
             contents: contentsWithSasUrls,
         };
+    }
+
+    @Post(':courseId/enroll-free')
+    @HttpCode(200)
+    @UseGuards(JwtAuthGuard, RolesGuard)
+    @Roles(SystemRole.STUDENT)
+    async enrollFree(@Param('courseId') courseId: string, @Req() req: Request) {
+        const studentId = (req as any).user.id;
+        const registration = await this.courseAccessService.enrollFree(studentId, courseId);
+        await this.masteryService.initializeCourseMastery(studentId, courseId);
+        return {
+            courseId,
+            registrationId: registration.registration_id,
+            accessLevel: 'FULL',
+        };
+    }
+
+    private parsePlatform(value?: string): StorePlatform | undefined {
+        const normalized = value?.trim().toUpperCase();
+        return Object.values(StorePlatform).includes(normalized as StorePlatform)
+            ? (normalized as StorePlatform)
+            : undefined;
     }
 
     @Get(':courseId/syllabus')

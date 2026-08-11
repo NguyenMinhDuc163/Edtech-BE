@@ -25,6 +25,8 @@ import { RefundController } from "./refund.controller";
 import { SystemParameterController } from "./admin/system-parameter.controller";
 import { RagController } from "./rag.controller";
 import { ContentMappingController } from "./content-mapping.controller";
+import { MobileIapController } from "./mobile-iap.controller";
+import { RevenueCatWebhookController } from "./revenuecat-webhook.controller";
  export const controllers = [
     AuthController,
     UsersController,
@@ -53,4 +55,6 @@ import { ContentMappingController } from "./content-mapping.controller";
     SystemParameterController,
     RagController,
     ContentMappingController,
+    MobileIapController,
+    RevenueCatWebhookController,
 ];
