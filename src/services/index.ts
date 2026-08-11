@@ -28,6 +28,9 @@ import { RefundService } from "./refund.service";
 import { AICourseService } from "./ai-course.service";
 import { RagService } from "./rag.service";
 import { ContentMappingService } from "./content-mapping.service";
+import { CourseAccessService } from "./course-access.service";
+import { RevenueCatService } from "./revenuecat.service";
+import { IapPurchaseService } from "./iap-purchase.service";
 
 export const services = [
     AuthService,
@@ -60,4 +63,7 @@ export const services = [
     AICourseService,
     RagService,
     ContentMappingService,
+    CourseAccessService,
+    RevenueCatService,
+    IapPurchaseService,
 ];

@@ -7,13 +7,16 @@
   "type": "commonjs",
   "scripts": {
     "start:dev": "nest start --watch",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run build && node --test test/*.test.js",
     "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
     "start": "nest start",
     "typeorm": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js",
     "migration:generate": "npm run typeorm -- migration:generate src/schema/migrations/$npm_config_name -d src/schema/datasource.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/schema/datasource.ts",
-    "migration:revert": "npm run typeorm -- migration:revert -d src/schema/datasource.ts"
+    "migration:revert": "npm run typeorm -- migration:revert -d src/schema/datasource.ts",
+    "migration:show:prod": "node ./node_modules/typeorm/cli.js migration:show -d dist/schema/datasource.js",
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/schema/datasource.js",
+    "migration:revert:prod": "node ./node_modules/typeorm/cli.js migration:revert -d dist/schema/datasource.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1071.0",

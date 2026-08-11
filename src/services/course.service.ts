@@ -31,6 +31,8 @@ import { StorageService } from "./storage.service";
 import { CourseRegistration } from "../schema/entities/course-registration.entity";
 import { CourseReview } from "../schema/entities/course-review.entity";
 import { ContentFile } from "src/schema/entities/content-file.entity";
+import { CourseAccessService } from "./course-access.service";
+import { CourseStoreProduct } from "../schema/entities/course-store-product.entity";
 
 @Injectable()
 export class CourseService {
@@ -58,6 +60,9 @@ export class CourseService {
     private readonly masteryRepo: Repository<UserContentMastery>,
     @InjectRepository(ContentRelationship)
     private readonly relationRepo: Repository<ContentRelationship>,
+    @InjectRepository(CourseStoreProduct)
+    private readonly storeProductRepo: Repository<CourseStoreProduct>,
+    private readonly courseAccessService: CourseAccessService,
   ) { }
 
   async create(
@@ -84,6 +89,8 @@ export class CourseService {
         : "0",
       course_description: createDto.courseDescription ?? null,
       thumbnail_url: createDto.thumbnailUrl ?? null,
+      is_paid: createDto.isPaid ?? createDto.price > 0,
+      mobile_iap_enabled: false,
     });
 
     return await this.courseRepo.save(course);
@@ -125,6 +132,24 @@ export class CourseService {
       course.course_description = dto.courseDescription ?? null;
     if (dto.thumbnailUrl !== undefined)
       course.thumbnail_url = dto.thumbnailUrl ?? null;
+    if (dto.isPaid !== undefined) course.is_paid = dto.isPaid;
+    if (dto.mobileIapEnabled !== undefined) {
+      if (!course.is_paid && dto.mobileIapEnabled) {
+        throw new BadRequestException("Khóa học miễn phí không thể bật IAP");
+      }
+      if (dto.mobileIapEnabled) {
+        const activeProducts = await this.storeProductRepo.count({
+          where: { course_id: courseId, is_active: true },
+        });
+        if (!activeProducts) {
+          throw new BadRequestException(
+            "Chưa có store product active cho khóa học",
+          );
+        }
+      }
+      course.mobile_iap_enabled = dto.mobileIapEnabled;
+    }
+    if (!course.is_paid) course.mobile_iap_enabled = false;
 
     return await this.courseRepo.save(course);
   }
@@ -208,6 +233,8 @@ export class CourseService {
       courseDescription: course.course_description,
       thumbnailUrl: thumbnailUrlWithSas,
       createdAt: course.created_at,
+      isPaid: course.is_paid,
+      mobileIapEnabled: course.mobile_iap_enabled,
       sections,
     };
   }
@@ -249,6 +276,8 @@ export class CourseService {
           courseDescription: c.course_description,
           thumbnailUrl: thumbnailUrlWithSas,
           createdAt: c.created_at,
+          isPaid: c.is_paid,
+          mobileIapEnabled: c.mobile_iap_enabled,
         };
       })
     );
@@ -437,6 +466,7 @@ export class CourseService {
           visibility: course.visibility,
           isPreview: course.is_preview,
           isPaid: course.is_paid,
+          mobileIapEnabled: course.mobile_iap_enabled,
           userId: course.user_id,
           createdAt: course.created_at,
           updatedAt: course.updated_at,
@@ -456,19 +486,14 @@ export class CourseService {
 
 
   async getStudentSyllabus(courseId: string, studentId: string) {
-    const registration = await this.courseRegistrationRepo.findOne({
-      where: { user_id: studentId, course_id: courseId, payment_status: 'PAID' }
-    });
-
-    if (!registration) {
-      throw new ForbiddenException('Bạn chưa mua khóa học này hoặc đơn hàng chưa hoàn tất.');
-    }
-
     const course = await this.courseRepo.findOne({
       where: { course_id: courseId },
-      select: ['course_id', 'title', 'description', 'thumbnail_url']
     });
     if (!course) throw new NotFoundException('Khóa học không tồn tại');
+    const access = await this.courseAccessService.resolveAccess(studentId, course);
+    if (access.accessLevel !== 'FULL') {
+      throw new ForbiddenException('Bạn chưa mua khóa học này hoặc đơn hàng chưa hoàn tất.');
+    }
     let thumbnailUrlWithSas: string | null = course.thumbnail_url;
     if (course.thumbnail_url) {
       try {
@@ -598,7 +623,7 @@ export class CourseService {
       title: course.title,
       description: course.description,
       thumbnailUrl: thumbnailUrlWithSas,
-      progress: registration.progress,
+      progress: access.registration?.progress ?? 0,
       sections: sectionsWithContents
     };
   }
@@ -899,6 +924,8 @@ export class CourseService {
           discountAmount: c.discount_amount,
           courseDescription: c.course_description,
           thumbnailUrl: thumbnailUrlWithSas,
+          isPaid: c.is_paid,
+          mobileIapEnabled: c.mobile_iap_enabled,
           rating: parseFloat(avgRating?.avg ?? '0') || 0,
           createdAt: c.created_at,
           updatedAt: c.updated_at,

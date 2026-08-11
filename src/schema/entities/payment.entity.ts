@@ -13,7 +13,11 @@ export enum PaymentStatus {
 export enum PaymentMethod {
   VNPAY = 'VNPAY',
   MOMO = 'MOMO',
-  ZALOPAY = 'ZALOPAY'
+  ZALOPAY = 'ZALOPAY',
+  APP_STORE = 'APP_STORE',
+  PLAY_STORE = 'PLAY_STORE',
+  FREE = 'FREE',
+  ADMIN = 'ADMIN',
 }
 
 @Entity('payments')

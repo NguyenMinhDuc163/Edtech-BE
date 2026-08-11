@@ -5,6 +5,7 @@ import { CourseApproval } from './course-approval.entity';
 import { PendingChange } from './pending-change.entity';
 import { CourseReview } from './course-review.entity';
 import { CourseRegistration } from './course-registration.entity';
+import { CourseStoreProduct } from './course-store-product.entity';
 
 export enum CourseVisibility {
     PRIVATE = 'PRIVATE',
@@ -93,6 +94,9 @@ export class Course {
     @Column({ type: 'boolean', default: true })
     is_paid!: boolean;
 
+    @Column({ type: 'boolean', default: false })
+    mobile_iap_enabled!: boolean;
+
     @UpdateDateColumn({ type: 'timestamptz' })
     updated_at!: Date;
 
@@ -110,4 +114,7 @@ export class Course {
 
     @OneToMany(() => CourseRegistration, (reg) => reg.course)
     registrations!: CourseRegistration[];
+
+    @OneToMany(() => CourseStoreProduct, (product) => product.course)
+    store_products!: CourseStoreProduct[];
 }

@@ -30,6 +30,9 @@ import { Refund } from "./refund.entity";
 import { ChatSession } from "./chat-session.entity";
 import { ChatMessage } from "./chat-message.entity";
 import { TranscriptChunk } from "./transcript-chunk.entity";
+import { CourseStoreProduct } from "./course-store-product.entity";
+import { IapPurchase } from "./iap-purchase.entity";
+import { RevenueCatWebhookEvent } from "./revenuecat-webhook-event.entity";
 
 export const entities = [
     User,
@@ -64,5 +67,8 @@ export const entities = [
     UserCertificate,
     ChatSession,
     ChatMessage,
-    TranscriptChunk
+    TranscriptChunk,
+    CourseStoreProduct,
+    IapPurchase,
+    RevenueCatWebhookEvent,
 ];

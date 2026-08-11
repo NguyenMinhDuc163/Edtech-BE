@@ -65,6 +65,8 @@ export class CourseController {
       teacher: body.teacher,
       courseDescription: body.courseDescription,
       thumbnailUrl: body.thumbnailUrl || null,
+      isPaid: this.parseBoolean(body.isPaid, parseFloat(body.price) > 0),
+      mobileIapEnabled: this.parseBoolean(body.mobileIapEnabled, false),
     };
     if (body.discountAmount) dto.discountAmount = parseFloat(body.discountAmount);
 
@@ -204,9 +206,20 @@ export class CourseController {
     if (body.courseDescription !== undefined) dto.courseDescription = body.courseDescription;
     if (thumbnailUrl) dto.thumbnailUrl = thumbnailUrl;
     else if (body.thumbnailUrl !== undefined) dto.thumbnailUrl = body.thumbnailUrl;
+    if (body.isPaid !== undefined) dto.isPaid = this.parseBoolean(body.isPaid, true);
+    if (body.mobileIapEnabled !== undefined) {
+      dto.mobileIapEnabled = this.parseBoolean(body.mobileIapEnabled, false);
+    }
 
     const updated = await this.courseService.update(courseId, ownerId, dto);
     return { courseId: String(updated.course_id) };
+  }
+
+  private parseBoolean(value: unknown, fallback: boolean): boolean {
+    if (value === undefined || value === null || value === '') return fallback;
+    if (typeof value === 'boolean') return value;
+    const normalized = String(value).trim().toLowerCase();
+    return normalized === 'true' || normalized === '1';
   }
 
   @Post(':courseId/submit')

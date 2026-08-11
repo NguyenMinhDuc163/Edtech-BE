@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import { Payment, PaymentStatus, PaymentMethod } from '../schema/entities/payment.entity';
 import { Course } from '../schema/entities/course.entity';
 import { CourseRegistration } from '../schema/entities/course-registration.entity';
+import { CourseAccessSource } from '../schema/entities/course-registration.entity';
+import { CourseAccessService } from './course-access.service';
+import { MasteryService } from './mastery.service';
 
 @Injectable()
 export class PaymentService {
@@ -14,7 +17,24 @@ export class PaymentService {
     private readonly courseRepo: Repository<Course>,
     @InjectRepository(CourseRegistration)
     private readonly registrationRepo: Repository<CourseRegistration>,
+    private readonly courseAccessService: CourseAccessService,
+    private readonly masteryService: MasteryService,
   ) { }
+
+  async getCourseCheckoutAmount(courseId: string): Promise<number> {
+    const course = await this.courseRepo.findOne({
+      where: { course_id: courseId },
+    });
+    if (!course) throw new BadRequestException('Khóa học không tồn tại');
+    if (!course.is_paid) {
+      throw new BadRequestException('Khóa học miễn phí không cần thanh toán');
+    }
+    const amount = Number(course.price);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Giá khóa học không hợp lệ');
+    }
+    return Math.round(amount);
+  }
 
   /**
    * Tạo payment record khi bắt đầu thanh toán
@@ -94,6 +114,10 @@ export class PaymentService {
       throw new BadRequestException('Không tìm thấy giao dịch');
     }
 
+    if (payment.status === PaymentStatus.SUCCESS && data.responseCode !== '00') {
+      return payment;
+    }
+
     // Cập nhật thông tin
     payment.response_code = data.responseCode;
     payment.transaction_no = data.transactionNo || null;
@@ -104,17 +128,21 @@ export class PaymentService {
       payment.status = PaymentStatus.SUCCESS;
       payment.paid_at = data.paidAt || new Date();
 
-      // Nếu là thanh toán khóa học, tạo CourseRegistration
-      if (payment.course_id) {
-        await this.createOrUpdateCourseRegistration(payment);
-      }
     } else if (data.responseCode === '24') {
       payment.status = PaymentStatus.CANCELLED;
     } else {
       payment.status = PaymentStatus.FAILED;
     }
 
-    return await this.paymentRepo.save(payment);
+    const savedPayment = await this.paymentRepo.save(payment);
+    if (savedPayment.status === PaymentStatus.SUCCESS && savedPayment.course_id) {
+      await this.createOrUpdateCourseRegistration(savedPayment);
+      await this.masteryService.initializeCourseMastery(
+        savedPayment.user_id,
+        savedPayment.course_id,
+      );
+    }
+    return savedPayment;
   }
 
   /**
@@ -124,40 +152,15 @@ export class PaymentService {
     if (!payment.course_id) {
       throw new BadRequestException('Có lỗi trong quá trình giao dịch, khóa học không tồn tại trong hệ thống');
     }
-    const existingRegis = await this.registrationRepo.findOne({
-      where: {
-        user_id: payment.user_id,
-        course_id: payment.course_id,
-      },
+    await this.courseAccessService.grantAccess({
+      userId: payment.user_id,
+      courseId: payment.course_id,
+      source: CourseAccessSource.VNPAY,
+      amountPaid: payment.amount,
+      paymentMethod: PaymentMethod.VNPAY,
+      transactionId: payment.txn_ref,
+      purchaseDate: payment.paid_at ?? new Date(),
     });
-
-    if (existingRegis && existingRegis.payment_status !== 'PAID') {
-      existingRegis.payment_status = 'PAID';
-      existingRegis.amount_paid = payment.amount;
-      existingRegis.transaction_id = payment.txn_ref;
-      existingRegis.payment_method = payment.payment_method;
-      existingRegis.purchase_date = payment.paid_at!;
-      existingRegis.registered_at = existingRegis.registered_at || new Date();
-
-      await this.registrationRepo.save(existingRegis);
-      return;
-    }
-
-    if (!existingRegis) {
-      const registration = this.registrationRepo.create({
-        user_id: payment.user_id,
-        course_id: payment.course_id!,
-        payment_status: 'PAID',
-        amount_paid: payment.amount,
-        transaction_id: payment.txn_ref,
-        payment_method: payment.payment_method,
-        purchase_date: payment.paid_at!,
-        registered_at: new Date(),
-        progress: 0,
-      });
-
-      await this.registrationRepo.save(registration);
-    }
   }
 
   /**

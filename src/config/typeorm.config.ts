@@ -1,6 +1,7 @@
 import {TypeOrmModuleOptions} from "@nestjs/typeorm";
 import {PostgresConnectionOptions} from "typeorm/driver/postgres/PostgresConnectionOptions";
 import * as dotenv from "dotenv";
+import { join } from "path";
 import {entities} from "../schema/entities";
 import {SimpleSqlLogger} from "../common/logger/sql-logger";
 
@@ -25,8 +26,6 @@ export const typeOrmConfig: TypeOrmModuleOptions = {
 
 export const dataSourceConfig: PostgresConnectionOptions  = {
   ...commonConfig,
-  migrations: ["src/schema/migrations/*.ts"],
+  migrations: [join(__dirname, "../schema/migrations/*.{ts,js}")],
   synchronize: false,
 };
-
-
