@@ -30,7 +30,10 @@ import {
   MobileIapSyncDto,
   UpdateCourseStoreProductDto,
 } from '../schema/dtos/mobile-iap.dto';
-import { RevenueCatService } from './revenuecat.service';
+import {
+  hasVerifiedNonSubscriptionPurchase,
+  RevenueCatService,
+} from './revenuecat.service';
 import { CourseAccessService } from './course-access.service';
 import { CourseAccessSource } from '../schema/entities/course-registration.entity';
 import { MasteryService } from './mastery.service';
@@ -354,11 +357,25 @@ export class IapPurchaseService {
     if (!product) {
       throw new BadRequestException(`Không tìm thấy mapping cho product ${event.product_id}`);
     }
+    const user = await this.findUserForEvent(event);
     if (!(event.entitlement_ids ?? []).includes(product.entitlement_id)) {
-      throw new BadRequestException('RevenueCat entitlement không khớp khóa học');
+      const customer = await this.revenueCatService.getSubscriber(
+        user.revenuecat_app_user_id,
+      );
+      const verified = hasVerifiedNonSubscriptionPurchase(
+        customer,
+        product.entitlement_id,
+        product.product_id,
+        [event.transaction_id, event.original_transaction_id].filter(Boolean),
+      );
+      if (!verified) {
+        throw new BadRequestException('RevenueCat entitlement không khớp khóa học');
+      }
+      this.logger.warn(
+        `Recovered webhook ${event.id} using the verified subscriber snapshot`,
+      );
     }
 
-    const user = await this.findUserForEvent(event);
     await this.upsertVerifiedPurchase({
       user,
       product,

@@ -1,7 +1,10 @@
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const test = require('node:test');
-const { RevenueCatService } = require('../dist/services/revenuecat.service');
+const {
+  hasVerifiedNonSubscriptionPurchase,
+  RevenueCatService,
+} = require('../dist/services/revenuecat.service');
 
 const authToken = 'test-webhook-auth';
 const hmacSecret = 'test-hmac-secret';
@@ -47,5 +50,55 @@ test('rejects a modified payload and an expired signature', () => {
   const staleTimestamp = timestamp - 301;
   assert.throws(() =>
     service.verifyWebhook(authToken, signature(staleTimestamp), body),
+  );
+});
+
+test('verifies a non-subscription purchase using entitlement and transaction', () => {
+  const customer = {
+    subscriber: {
+      entitlements: {
+        course_28_access: {
+          product_identifier: 'edtech.course.28.lifetime',
+          expires_date: null,
+        },
+      },
+      non_subscriptions: {
+        'edtech.course.28.lifetime': [
+          {
+            id: 'GPA.1234-5678',
+            purchase_date: '2026-08-12T02:54:00Z',
+            store: 'play_store',
+          },
+        ],
+      },
+    },
+  };
+
+  assert.equal(
+    hasVerifiedNonSubscriptionPurchase(
+      customer,
+      'course_28_access',
+      'edtech.course.28.lifetime',
+      ['GPA.1234-5678'],
+    ),
+    true,
+  );
+  assert.equal(
+    hasVerifiedNonSubscriptionPurchase(
+      customer,
+      'wrong_entitlement',
+      'edtech.course.28.lifetime',
+      ['GPA.1234-5678'],
+    ),
+    false,
+  );
+  assert.equal(
+    hasVerifiedNonSubscriptionPurchase(
+      customer,
+      'course_28_access',
+      'edtech.course.28.lifetime',
+      ['different_transaction'],
+    ),
+    false,
   );
 });
