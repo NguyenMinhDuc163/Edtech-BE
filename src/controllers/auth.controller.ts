@@ -40,7 +40,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Req() req: Request
   ) {
-    const { access_token, refresh_token, user, isPayment } = await this.authService.login(
+    const { access_token, refresh_token, user, isPayment, isAds } = await this.authService.login(
       loginDto,
       req
     );
@@ -49,7 +49,8 @@ export class AuthController {
       access_token,
       refresh_token,
       user,
-      isPayment
+      isPayment,
+      isAds
     };
   }
 
