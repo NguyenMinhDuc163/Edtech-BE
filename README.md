@@ -120,7 +120,7 @@ docker push nguyenduc1603/edtech-be:1.0.x
 
 ## server
 ```bash
-docker-compose pull
+docker-compose pullbanj
 docker-compose up -d
 ```
 # Edtech-BE

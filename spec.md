@@ -168,6 +168,11 @@ Bao ve request:
 Xu ly:
 
 - `NON_RENEWING_PURCHASE`: verify mapping/user/entitlement, upsert purchase, grant access.
+  Neu payload retry cu khong co `entitlement_ids`, doi chieu subscriber snapshot
+  theo entitlement + product + store va transaction ID. Neu Store va webhook
+  dung hai transaction identifier khac nhau, cho phep doi chieu them thoi diem
+  mua voi sai so toi da 5 phut. Khong cap quyen neu entitlement thieu, sai
+  product, het han hoac subscriber khong co non-subscription purchase.
 - `CANCELLATION`: danh dau refunded va revoke co dieu kien.
 - `REFUND_REVERSED`: active lai purchase va grant lai access.
 - `TRANSFER`: reconcile user dich neu ID hop le; khong tu y chuyen quyen giua hai EduTech account.

@@ -33,26 +33,113 @@ export interface RevenueCatSubscriberResponse {
   };
 }
 
+export type RevenueCatPurchaseVerificationReason =
+  | 'VERIFIED_TRANSACTION_ID'
+  | 'VERIFIED_PURCHASE_DATE'
+  | 'ENTITLEMENT_MISSING'
+  | 'ENTITLEMENT_PRODUCT_MISMATCH'
+  | 'ENTITLEMENT_EXPIRED'
+  | 'PURCHASE_MISSING'
+  | 'PURCHASE_STORE_MISMATCH'
+  | 'TRANSACTION_MISMATCH';
+
+export interface RevenueCatPurchaseVerification {
+  verified: boolean;
+  reason: RevenueCatPurchaseVerificationReason;
+}
+
+interface VerifyNonSubscriptionPurchaseInput {
+  entitlementId: string;
+  productId: string;
+  transactionIds: string[];
+  purchasedAtMs?: number;
+  store?: string;
+}
+
+const PURCHASE_DATE_TOLERANCE_MS = 5 * 60 * 1000;
+
+export function verifyNonSubscriptionPurchase(
+  customer: RevenueCatSubscriberResponse,
+  input: VerifyNonSubscriptionPurchaseInput,
+): RevenueCatPurchaseVerification {
+  const entitlement =
+    customer.subscriber.entitlements?.[input.entitlementId];
+  if (!entitlement) {
+    return { verified: false, reason: 'ENTITLEMENT_MISSING' };
+  }
+  if (entitlement.product_identifier !== input.productId) {
+    return { verified: false, reason: 'ENTITLEMENT_PRODUCT_MISMATCH' };
+  }
+  if (
+    entitlement.expires_date &&
+    new Date(entitlement.expires_date).getTime() <= Date.now()
+  ) {
+    return { verified: false, reason: 'ENTITLEMENT_EXPIRED' };
+  }
+
+  const transactions =
+    customer.subscriber.non_subscriptions?.[input.productId] ?? [];
+  if (!transactions.length) {
+    return { verified: false, reason: 'PURCHASE_MISSING' };
+  }
+
+  const expectedStore = normalizeRevenueCatStore(input.store);
+  const storeTransactions = expectedStore
+    ? transactions.filter(
+        (transaction) =>
+          normalizeRevenueCatStore(transaction.store) === expectedStore,
+      )
+    : transactions;
+  if (!storeTransactions.length) {
+    return { verified: false, reason: 'PURCHASE_STORE_MISMATCH' };
+  }
+
+  const expectedIds = new Set(input.transactionIds.filter(Boolean));
+  if (
+    expectedIds.size &&
+    storeTransactions.some((transaction) => expectedIds.has(transaction.id))
+  ) {
+    return { verified: true, reason: 'VERIFIED_TRANSACTION_ID' };
+  }
+
+  const purchasedAtMs = Number(input.purchasedAtMs);
+  const entitlementPurchasedAtMs = Date.parse(entitlement.purchase_date ?? '');
+  if (
+    Number.isFinite(purchasedAtMs) &&
+    Number.isFinite(entitlementPurchasedAtMs) &&
+    Math.abs(entitlementPurchasedAtMs - purchasedAtMs) <=
+      PURCHASE_DATE_TOLERANCE_MS &&
+    storeTransactions.some((transaction) => {
+      const transactionPurchasedAtMs = Date.parse(transaction.purchase_date);
+      return (
+        Number.isFinite(transactionPurchasedAtMs) &&
+        Math.abs(transactionPurchasedAtMs - purchasedAtMs) <=
+          PURCHASE_DATE_TOLERANCE_MS
+      );
+    })
+  ) {
+    return { verified: true, reason: 'VERIFIED_PURCHASE_DATE' };
+  }
+
+  return { verified: false, reason: 'TRANSACTION_MISMATCH' };
+}
+
 export function hasVerifiedNonSubscriptionPurchase(
   customer: RevenueCatSubscriberResponse,
   entitlementId: string,
   productId: string,
   transactionIds: string[],
 ): boolean {
-  const entitlement = customer.subscriber.entitlements?.[entitlementId];
-  if (!entitlement || entitlement.product_identifier !== productId) return false;
-  if (
-    entitlement.expires_date &&
-    new Date(entitlement.expires_date).getTime() <= Date.now()
-  ) {
-    return false;
-  }
+  return verifyNonSubscriptionPurchase(customer, {
+    entitlementId,
+    productId,
+    transactionIds,
+  }).verified;
+}
 
-  const expectedIds = new Set(transactionIds.filter(Boolean));
-  if (!expectedIds.size) return false;
-  return (customer.subscriber.non_subscriptions?.[productId] ?? []).some(
-    (transaction) => expectedIds.has(transaction.id),
-  );
+function normalizeRevenueCatStore(value: string | undefined): string | null {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  return normalized || null;
 }
 
 @Injectable()

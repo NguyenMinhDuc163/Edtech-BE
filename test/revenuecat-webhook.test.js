@@ -4,6 +4,7 @@ const test = require('node:test');
 const {
   hasVerifiedNonSubscriptionPurchase,
   RevenueCatService,
+  verifyNonSubscriptionPurchase,
 } = require('../dist/services/revenuecat.service');
 
 const authToken = 'test-webhook-auth';
@@ -100,5 +101,66 @@ test('verifies a non-subscription purchase using entitlement and transaction', (
       ['different_transaction'],
     ),
     false,
+  );
+});
+
+test('verifies a Google purchase by store and purchase date when IDs differ', () => {
+  const customer = {
+    subscriber: {
+      entitlements: {
+        course_28_access: {
+          product_identifier: 'edtech.course.28.lifetime',
+          purchase_date: '2026-08-12T15:30:00Z',
+          expires_date: null,
+        },
+      },
+      non_subscriptions: {
+        'edtech.course.28.lifetime': [
+          {
+            id: 'GPA.1234-5678',
+            purchase_date: '2026-08-12T15:30:02Z',
+            store: 'play_store',
+          },
+        ],
+      },
+    },
+  };
+
+  assert.deepEqual(
+    verifyNonSubscriptionPurchase(customer, {
+      entitlementId: 'course_28_access',
+      productId: 'edtech.course.28.lifetime',
+      transactionIds: ['different-webhook-transaction-id'],
+      purchasedAtMs: Date.parse('2026-08-12T15:30:00Z'),
+      store: 'PLAY_STORE',
+    }),
+    { verified: true, reason: 'VERIFIED_PURCHASE_DATE' },
+  );
+});
+
+test('reports the exact reason when the entitlement is missing', () => {
+  assert.deepEqual(
+    verifyNonSubscriptionPurchase(
+      {
+        subscriber: {
+          entitlements: {},
+          non_subscriptions: {
+            'edtech.course.28.lifetime': [
+              {
+                id: 'GPA.1234-5678',
+                purchase_date: '2026-08-12T15:30:00Z',
+                store: 'play_store',
+              },
+            ],
+          },
+        },
+      },
+      {
+        entitlementId: 'course_28_access',
+        productId: 'edtech.course.28.lifetime',
+        transactionIds: ['GPA.1234-5678'],
+      },
+    ),
+    { verified: false, reason: 'ENTITLEMENT_MISSING' },
   );
 });

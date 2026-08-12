@@ -168,6 +168,15 @@ WHERE course_id = 28
 ## 4. Them mapping iOS cho cung khoa hoc
 
 ```sql
+BEGIN;
+
+-- Moi course chi co mot mapping iOS active.
+UPDATE course_store_products
+SET is_active = false,
+    updated_at = NOW()
+WHERE course_id = 28
+  AND platform = 'IOS';
+
 INSERT INTO course_store_products (
     course_id,
     platform,
@@ -185,7 +194,17 @@ VALUES (
     'course_28_access',
     'NON_CONSUMABLE',
     true
-);
+)
+ON CONFLICT (platform, product_id)
+DO UPDATE SET
+    course_id = EXCLUDED.course_id,
+    store = EXCLUDED.store,
+    entitlement_id = EXCLUDED.entitlement_id,
+    product_type = EXCLUDED.product_type,
+    is_active = EXCLUDED.is_active,
+    updated_at = NOW();
+
+COMMIT;
 ```
 
 Moi `(course_id, platform)` chi duoc co mot mapping active. Product da co giao
