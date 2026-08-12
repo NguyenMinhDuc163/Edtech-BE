@@ -31,8 +31,8 @@ import {
   UpdateCourseStoreProductDto,
 } from '../schema/dtos/mobile-iap.dto';
 import {
-  hasVerifiedNonSubscriptionPurchase,
   RevenueCatService,
+  verifyNonSubscriptionPurchase,
 } from './revenuecat.service';
 import { CourseAccessService } from './course-access.service';
 import { CourseAccessSource } from '../schema/entities/course-registration.entity';
@@ -362,17 +362,23 @@ export class IapPurchaseService {
       const customer = await this.revenueCatService.getSubscriber(
         user.revenuecat_app_user_id,
       );
-      const verified = hasVerifiedNonSubscriptionPurchase(
-        customer,
-        product.entitlement_id,
-        product.product_id,
-        [event.transaction_id, event.original_transaction_id].filter(Boolean),
-      );
-      if (!verified) {
-        throw new BadRequestException('RevenueCat entitlement không khớp khóa học');
+      const verification = verifyNonSubscriptionPurchase(customer, {
+        entitlementId: product.entitlement_id,
+        productId: product.product_id,
+        transactionIds: [
+          event.transaction_id,
+          event.original_transaction_id,
+        ].filter(Boolean),
+        purchasedAtMs: Number(event.purchased_at_ms),
+        store: event.store,
+      });
+      if (!verification.verified) {
+        throw new BadRequestException(
+          `RevenueCat chưa xác minh được quyền khóa học (${verification.reason})`,
+        );
       }
       this.logger.warn(
-        `Recovered webhook ${event.id} using the verified subscriber snapshot`,
+        `Recovered webhook ${event.id} using subscriber ${verification.reason}`,
       );
     }
 
