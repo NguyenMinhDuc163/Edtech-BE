@@ -33,6 +33,28 @@ export interface RevenueCatSubscriberResponse {
   };
 }
 
+export function hasVerifiedNonSubscriptionPurchase(
+  customer: RevenueCatSubscriberResponse,
+  entitlementId: string,
+  productId: string,
+  transactionIds: string[],
+): boolean {
+  const entitlement = customer.subscriber.entitlements?.[entitlementId];
+  if (!entitlement || entitlement.product_identifier !== productId) return false;
+  if (
+    entitlement.expires_date &&
+    new Date(entitlement.expires_date).getTime() <= Date.now()
+  ) {
+    return false;
+  }
+
+  const expectedIds = new Set(transactionIds.filter(Boolean));
+  if (!expectedIds.size) return false;
+  return (customer.subscriber.non_subscriptions?.[productId] ?? []).some(
+    (transaction) => expectedIds.has(transaction.id),
+  );
+}
+
 @Injectable()
 export class RevenueCatService {
   private readonly apiBaseUrl =
