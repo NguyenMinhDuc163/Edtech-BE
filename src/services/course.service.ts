@@ -581,12 +581,26 @@ export class CourseService {
     return this.contentRepo.save(content);
   }
 
-  async updateCourseContentEnabledAsAdmin(courseId: string, enabled: boolean) {
+  async updateCourseContentEnabledAsAdmin(
+    courseId: string,
+    enabled: boolean,
+    adminId: string,
+  ) {
     const course = await this.courseRepo.findOne({
       where: { course_id: courseId },
     });
     if (!course) throw new NotFoundException("Khóa học không tồn tại");
     await this.dataSource.transaction(async (manager) => {
+      if (enabled && course.status !== CourseStatus.APPROVED) {
+        await manager.getRepository(CourseApproval).save({
+          course_id: courseId,
+          admin_id: adminId,
+          status: ApprovalStatus.APPROVED,
+          comment: "Admin đã bật và xuất bản khóa học từ trang cấu hình",
+          rejected_at: null,
+        });
+      }
+
       await manager.getRepository(Course).update(
         { course_id: courseId },
         {
@@ -594,6 +608,7 @@ export class CourseService {
           visibility: enabled
             ? CourseVisibility.PUBLIC
             : CourseVisibility.PRIVATE,
+          ...(enabled ? { status: CourseStatus.APPROVED } : {}),
           ...(!enabled ? { mobile_iap_enabled: false } : {}),
         },
       );

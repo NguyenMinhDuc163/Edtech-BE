@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
   UseGuards,
 } from "@nestjs/common";
@@ -16,7 +17,7 @@ import { RolesGuard } from "src/common/guards/roles.guard";
 import { AdminGetCoursesDto } from "src/schema/dtos/admin-get-courses.dto";
 import { SystemRole } from "src/schema/entities/role.entity";
 import { CourseService } from "src/services/course.service";
-import { Response } from "express";
+import { Request, Response } from "express";
 import { IapPurchaseService } from "src/services/iap-purchase.service";
 import {
   CreateCourseStoreProductDto,
@@ -131,8 +132,14 @@ export class AdminCourseController {
   async updateCourseContentEnabled(
     @Param("courseId") courseId: string,
     @Body() dto: UpdateAdminCourseContentEnabledDto,
+    @Req() req: Request,
   ) {
-    return this.courseService.updateCourseContentEnabledAsAdmin(courseId, dto.enabled);
+    const adminId = (req as any).user?.id;
+    return this.courseService.updateCourseContentEnabledAsAdmin(
+      courseId,
+      dto.enabled,
+      adminId,
+    );
   }
 
   @Patch(":courseId/files/:fileId/access")

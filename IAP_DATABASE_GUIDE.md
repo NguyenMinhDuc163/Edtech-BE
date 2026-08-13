@@ -1,5 +1,11 @@
 # Cau hinh khoa hoc hien thi va thanh toan IAP trong database
 
+> Luong van hanh uu tien la hai man hinh `Admin -> Cau hinh khoa hoc` va
+> `Admin -> San pham IAP`. Xem `ADMIN_COURSE_IAP_GUIDE.md` de hieu day du luong
+> tao khoa hoc, bat noi dung, xuat ban, tao Store product va mo ban. SQL trong
+> tai lieu nay chu yeu dung de chan doan/khac phuc, khong phai thao tac thuong
+> ngay.
+
 Tai lieu nay chi mo ta cach cap nhat du lieu cho mot khoa hoc da ton tai trong
 database.
 
@@ -12,6 +18,7 @@ Bang `courses`:
 | `visibility` | `PUBLIC` | Cho phep truy cap cong khai |
 | `status` | `APPROVED` | Khoa hoc da duoc duyet |
 | `is_preview` | `N` | Khong dung co preview de bo qua quy trinh duyet |
+| `content_enabled` | `true` | Cho phep API student tra noi dung khoa hoc |
 
 Khoa hoc hien thi khi:
 
@@ -19,7 +26,8 @@ Khoa hoc hien thi khi:
 visibility = 'PUBLIC' AND status = 'APPROVED'
 ```
 
-hoac khi `is_preview = 'Y'`.
+hoac khi `is_preview = 'Y'`. De API student tra noi dung ben trong, can them
+`content_enabled = true`.
 
 SQL hien thi mot khoa hoc:
 
@@ -28,6 +36,7 @@ UPDATE courses
 SET visibility = 'PUBLIC',
     status = 'APPROVED',
     is_preview = 'N',
+    content_enabled = true,
     updated_at = NOW()
 WHERE course_id = 28; -- Thay 28 bang ID khoa hoc
 ```
@@ -38,6 +47,8 @@ SQL an mot khoa hoc:
 UPDATE courses
 SET visibility = 'PRIVATE',
     is_preview = 'N',
+    content_enabled = false,
+    mobile_iap_enabled = false,
     updated_at = NOW()
 WHERE course_id = 28;
 ```
@@ -101,6 +112,7 @@ UPDATE courses
 SET visibility = 'PUBLIC',
     status = 'APPROVED',
     is_preview = 'N',
+    content_enabled = true,
     is_paid = true,
     price = 10000,
     currency = 'VND',
@@ -220,6 +232,7 @@ SELECT
     c.visibility,
     c.status,
     c.is_preview,
+    c.content_enabled,
     c.is_paid,
     c.price,
     c.currency,
@@ -246,6 +259,7 @@ Khoa hoc san sang mua tren mot platform khi ket qua co:
 ```text
 visibility = PUBLIC
 status = APPROVED
+content_enabled = true
 is_paid = true
 mobile_iap_enabled = true
 global_mobile_iap_enabled = Y
