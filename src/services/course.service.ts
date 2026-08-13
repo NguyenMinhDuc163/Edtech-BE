@@ -586,12 +586,14 @@ export class CourseService {
       where: { course_id: courseId },
     });
     if (!course) throw new NotFoundException("Khóa học không tồn tại");
-
     await this.dataSource.transaction(async (manager) => {
       await manager.getRepository(Course).update(
         { course_id: courseId },
         {
           content_enabled: enabled,
+          visibility: enabled
+            ? CourseVisibility.PUBLIC
+            : CourseVisibility.PRIVATE,
           ...(!enabled ? { mobile_iap_enabled: false } : {}),
         },
       );
