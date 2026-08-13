@@ -19,6 +19,9 @@ export class CourseContent {
   @Column({ type: 'varchar', length: 1, default: 'N' })
   is_preview!: string; // Y/N
 
+  @Column({ type: 'boolean', default: true })
+  is_active!: boolean;
+
   @Column({ type: 'timestamptz', default: () => 'NOW()' })
   created_at!: Date;
 
@@ -48,5 +51,4 @@ export class CourseContent {
   @OneToMany(() => UserContentMastery, (m) => m.content)
   masteryRecords!: UserContentMastery[];
 }
-
 

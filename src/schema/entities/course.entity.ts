@@ -97,6 +97,9 @@ export class Course {
     @Column({ type: 'boolean', default: false })
     mobile_iap_enabled!: boolean;
 
+    @Column({ type: 'boolean', default: false })
+    content_enabled!: boolean;
+
     @UpdateDateColumn({ type: 'timestamptz' })
     updated_at!: Date;
 

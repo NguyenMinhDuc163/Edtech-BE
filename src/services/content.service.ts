@@ -394,7 +394,7 @@ export class ContentService {
 
     async findAllPublicBySection(sectionId: string, accessLevel: string) {
         const contents = await this.contentRepo.find({
-            where: { section_id: sectionId },
+            where: { section_id: sectionId, is_active: true },
             relations: ['files'],
             order: { created_at: 'ASC' },
         });

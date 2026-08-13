@@ -20,6 +20,11 @@ import { Response } from "express";
 import { IapPurchaseService } from "src/services/iap-purchase.service";
 import {
   CreateCourseStoreProductDto,
+  UpdateAdminContentAccessDto,
+  UpdateAdminCourseContentEnabledDto,
+  UpdateAdminCourseVisibilityDto,
+  UpdateAdminFileAccessDto,
+  UpdateAdminSectionAccessDto,
   UpdateCourseMobileIapDto,
   UpdateCourseStoreProductDto,
 } from "src/schema/dtos/mobile-iap.dto";
@@ -79,6 +84,66 @@ export class AdminCourseController {
       dto.mobileIapEnabled,
       dto.isPaid,
     );
+  }
+
+  @Patch(":courseId/visibility")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async updateVisibility(
+    @Param("courseId") courseId: string,
+    @Body() dto: UpdateAdminCourseVisibilityDto,
+  ) {
+    return this.courseService.updateVisibilityAsAdmin(courseId, dto.visibility);
+  }
+
+  @Get(":courseId/content-access")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async getContentAccess(@Param("courseId") courseId: string) {
+    return this.courseService.getContentAccessAsAdmin(courseId);
+  }
+
+  @Patch(":courseId/sections/:sectionId/access")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async updateSectionAccess(
+    @Param("courseId") courseId: string,
+    @Param("sectionId") sectionId: string,
+    @Body() dto: UpdateAdminSectionAccessDto,
+  ) {
+    return this.courseService.updateSectionAccessAsAdmin(courseId, sectionId, dto);
+  }
+
+  @Patch(":courseId/contents/:contentId/access")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async updateContentAccess(
+    @Param("courseId") courseId: string,
+    @Param("contentId") contentId: string,
+    @Body() dto: UpdateAdminContentAccessDto,
+  ) {
+    return this.courseService.updateContentAccessAsAdmin(courseId, contentId, dto);
+  }
+
+  @Patch(":courseId/content-enabled")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async updateCourseContentEnabled(
+    @Param("courseId") courseId: string,
+    @Body() dto: UpdateAdminCourseContentEnabledDto,
+  ) {
+    return this.courseService.updateCourseContentEnabledAsAdmin(courseId, dto.enabled);
+  }
+
+  @Patch(":courseId/files/:fileId/access")
+  @HttpCode(200)
+  @Roles(SystemRole.ADMIN)
+  async updateFileAccess(
+    @Param("courseId") courseId: string,
+    @Param("fileId") fileId: string,
+    @Body() dto: UpdateAdminFileAccessDto,
+  ) {
+    return this.courseService.updateFileAccessAsAdmin(courseId, fileId, dto.isActive);
   }
 
   @Get(":courseId/export")

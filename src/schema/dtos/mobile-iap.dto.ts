@@ -12,6 +12,7 @@ import {
   StoreProductType,
   StoreProvider,
 } from '../entities/course-store-product.entity';
+import { CourseVisibility } from '../entities/course.entity';
 
 export enum IapSyncReason {
   PURCHASE = 'PURCHASE',
@@ -91,4 +92,39 @@ export class UpdateCourseMobileIapDto {
   @IsOptional()
   @IsBoolean()
   isPaid?: boolean;
+}
+
+export class UpdateAdminCourseVisibilityDto {
+  @IsEnum(CourseVisibility)
+  visibility!: CourseVisibility;
+}
+
+export class UpdateAdminSectionAccessDto {
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPreview?: boolean;
+}
+
+export class UpdateAdminContentAccessDto {
+  @IsOptional()
+  @IsBoolean()
+  isPreview?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateAdminCourseContentEnabledDto {
+  @IsBoolean()
+  enabled!: boolean;
+}
+
+export class UpdateAdminFileAccessDto {
+  @IsBoolean()
+  isActive!: boolean;
 }

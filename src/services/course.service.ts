@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, Repository } from "typeorm";
+import { DataSource, In, Repository } from "typeorm";
 import {
   Course,
   CourseCategory,
@@ -62,7 +62,10 @@ export class CourseService {
     private readonly relationRepo: Repository<ContentRelationship>,
     @InjectRepository(CourseStoreProduct)
     private readonly storeProductRepo: Repository<CourseStoreProduct>,
+    @InjectRepository(ContentFile)
+    private readonly contentFileRepo: Repository<ContentFile>,
     private readonly courseAccessService: CourseAccessService,
+    private readonly dataSource: DataSource,
   ) { }
 
   async create(
@@ -467,6 +470,7 @@ export class CourseService {
           isPreview: course.is_preview,
           isPaid: course.is_paid,
           mobileIapEnabled: course.mobile_iap_enabled,
+          contentEnabled: course.content_enabled,
           userId: course.user_id,
           createdAt: course.created_at,
           updatedAt: course.updated_at,
@@ -484,12 +488,158 @@ export class CourseService {
     };
   }
 
+  async updateVisibilityAsAdmin(
+    courseId: string,
+    visibility: CourseVisibility,
+  ): Promise<Course> {
+    const course = await this.courseRepo.findOne({
+      where: { course_id: courseId },
+    });
+    if (!course) {
+      throw new NotFoundException("Khóa học không tồn tại");
+    }
+    if (
+      visibility === CourseVisibility.PUBLIC &&
+      course.status !== CourseStatus.APPROVED
+    ) {
+      throw new BadRequestException(
+        "Chỉ khóa học đã duyệt mới có thể hiển thị công khai",
+      );
+    }
+    course.visibility = visibility;
+    return this.courseRepo.save(course);
+  }
+
+  async getContentAccessAsAdmin(courseId: string) {
+    const course = await this.courseRepo.findOne({
+      where: { course_id: courseId },
+    });
+    if (!course) throw new NotFoundException("Khóa học không tồn tại");
+
+    const sections = await this.sectionRepo.find({
+      where: { course_id: courseId },
+      relations: ["contents", "contents.files"],
+      order: { order_index: "ASC" },
+    });
+
+    return {
+      courseId: course.course_id,
+      courseTitle: course.title,
+      contentEnabled: course.content_enabled,
+      sections: sections.map((section) => ({
+        sectionId: section.section_id,
+        title: section.title,
+        isActive: section.is_active,
+        isPreview: section.is_preview === "Y",
+        contents: (section.contents ?? [])
+          .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
+          .map((content) => ({
+            contentId: content.content_id,
+            title: content.title,
+            isActive: content.is_active,
+            isPreview: content.is_preview === "Y",
+            files: (content.files ?? [])
+              .sort((a, b) => a.order_index - b.order_index)
+              .map((file) => ({
+                fileId: file.file_id,
+                title: file.title,
+                fileType: file.file_type,
+                isActive: file.is_active,
+              })),
+          })),
+      })),
+    };
+  }
+
+  async updateSectionAccessAsAdmin(
+    courseId: string,
+    sectionId: string,
+    dto: { isActive?: boolean; isPreview?: boolean },
+  ) {
+    const section = await this.sectionRepo.findOne({
+      where: { section_id: sectionId, course_id: courseId },
+    });
+    if (!section) throw new NotFoundException("Section không thuộc khóa học này");
+    if (dto.isActive !== undefined) section.is_active = dto.isActive;
+    if (dto.isPreview !== undefined) section.is_preview = dto.isPreview ? "Y" : "N";
+    return this.sectionRepo.save(section);
+  }
+
+  async updateContentAccessAsAdmin(
+    courseId: string,
+    contentId: string,
+    dto: { isPreview?: boolean; isActive?: boolean },
+  ) {
+    const content = await this.contentRepo.findOne({
+      where: { content_id: contentId, courses_id: courseId },
+    });
+    if (!content) throw new NotFoundException("Nội dung không thuộc khóa học này");
+    if (dto.isPreview !== undefined) {
+      content.is_preview = dto.isPreview ? "Y" : "N";
+    }
+    if (dto.isActive !== undefined) content.is_active = dto.isActive;
+    return this.contentRepo.save(content);
+  }
+
+  async updateCourseContentEnabledAsAdmin(courseId: string, enabled: boolean) {
+    const course = await this.courseRepo.findOne({
+      where: { course_id: courseId },
+    });
+    if (!course) throw new NotFoundException("Khóa học không tồn tại");
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.getRepository(Course).update(
+        { course_id: courseId },
+        {
+          content_enabled: enabled,
+          ...(!enabled ? { mobile_iap_enabled: false } : {}),
+        },
+      );
+
+      if (enabled) {
+        await manager.getRepository(CourseSection).update(
+          { course_id: courseId },
+          { is_active: true },
+        );
+        await manager.getRepository(CourseContent).update(
+          { courses_id: courseId },
+          { is_active: true },
+        );
+        await manager.query(
+          `UPDATE "content_files" SET "is_active" = true WHERE "content_id" IN (SELECT "content_id" FROM "course_contents" WHERE "courses_id" = $1)`,
+          [courseId],
+        );
+      }
+    });
+
+    return this.getContentAccessAsAdmin(courseId);
+  }
+
+  async updateFileAccessAsAdmin(
+    courseId: string,
+    fileId: string,
+    isActive: boolean,
+  ) {
+    const file = await this.contentFileRepo.findOne({
+      where: { file_id: fileId },
+      relations: ["content"],
+    });
+    if (!file || file.content.courses_id !== courseId) {
+      throw new NotFoundException("Tệp không thuộc khóa học này");
+    }
+    file.is_active = isActive;
+    return this.contentFileRepo.save(file);
+  }
+
 
   async getStudentSyllabus(courseId: string, studentId: string) {
     const course = await this.courseRepo.findOne({
       where: { course_id: courseId },
     });
     if (!course) throw new NotFoundException('Khóa học không tồn tại');
+    if (!course.content_enabled) {
+      throw new ForbiddenException('Nội dung khóa học đang được tắt');
+    }
     const access = await this.courseAccessService.resolveAccess(studentId, course);
     if (access.accessLevel !== 'FULL') {
       throw new ForbiddenException('Bạn chưa mua khóa học này hoặc đơn hàng chưa hoàn tất.');
@@ -508,14 +658,17 @@ export class CourseService {
     }
 
     const sections = await this.sectionRepo.find({
-      where: { course_id: courseId },
+      where: { course_id: courseId, is_active: true },
       order: { order_index: 'ASC' }
     });
 
     const contents = await this.contentRepo.find({
-      where: { courses_id: courseId },
+      where: { courses_id: courseId, is_active: true },
       select: ['courses_id', 'content_id', 'title', 'description', 'section_id'],
       relations: ['files']
+    });
+    contents.forEach((content) => {
+      content.files = (content.files ?? []).filter((file) => file.is_active);
     });
     const contentIds = contents.map(c => c.content_id);
 

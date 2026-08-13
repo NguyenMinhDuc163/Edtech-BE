@@ -111,7 +111,7 @@ export class IapPurchaseService {
     }
 
     const globalEnabled = await this.isGloballyEnabled();
-    if (!globalEnabled || !course.mobile_iap_enabled) {
+    if (!globalEnabled || !course.mobile_iap_enabled || !course.content_enabled) {
       return {
         owned: false,
         state: 'IAP_DISABLED',
@@ -514,6 +514,11 @@ export class IapPurchaseService {
 
   async createCourseProduct(courseId: string, dto: CreateCourseStoreProductDto) {
     const course = await this.requireCourse(courseId);
+    if (!course.content_enabled) {
+      throw new BadRequestException(
+        'Hãy bật nội dung khóa học trước khi cấu hình IAP',
+      );
+    }
     if (!course.is_paid) {
       throw new BadRequestException('Chỉ khóa học trả phí mới có store product');
     }
@@ -539,6 +544,12 @@ export class IapPurchaseService {
     id: string,
     dto: UpdateCourseStoreProductDto,
   ) {
+    const course = await this.requireCourse(courseId);
+    if (dto.isActive === true && !course.content_enabled) {
+      throw new BadRequestException(
+        'Hãy bật nội dung khóa học trước khi bật Store product',
+      );
+    }
     const product = await this.productRepo.findOne({
       where: { id, course_id: courseId },
     });
@@ -562,7 +573,23 @@ export class IapPurchaseService {
       await this.deactivatePlatformProducts(courseId, product.platform, product.id);
     }
     if (dto.isActive !== undefined) product.is_active = dto.isActive;
-    return this.productRepo.save(product);
+    const saved = await this.productRepo.save(product);
+
+    // Giữ dữ liệu nhất quán: một course không thể còn trạng thái bán IAP khi
+    // toàn bộ mapping Store đều đã bị tắt.
+    if (dto.isActive === false) {
+      const activeProducts = await this.productRepo.count({
+        where: { course_id: courseId, is_active: true },
+      });
+      if (!activeProducts) {
+        await this.courseRepo.update(
+          { course_id: courseId },
+          { mobile_iap_enabled: false },
+        );
+      }
+    }
+
+    return saved;
   }
 
   async updateCourseMobileIap(
@@ -576,6 +603,11 @@ export class IapPurchaseService {
       throw new BadRequestException('Khóa học miễn phí không thể bật IAP');
     }
     if (mobileIapEnabled) {
+      if (!course.content_enabled) {
+        throw new BadRequestException(
+          'Hãy bật nội dung khóa học trước khi bật IAP',
+        );
+      }
       const activeProducts = await this.productRepo.count({
         where: { course_id: courseId, is_active: true },
       });

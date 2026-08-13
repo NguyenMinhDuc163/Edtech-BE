@@ -212,6 +212,9 @@ export class SectionService {
     }
 
     async findAllPublicByCourse(courseId: string, accessLevel: string) {
+        const course = await this.courseRepo.findOne({ where: { course_id: courseId } });
+        if (!course?.content_enabled) return [];
+
         if (accessLevel === 'FULL') {
             return await this.sectionRepo.find({
                 where: { course_id: courseId, is_active: true },
@@ -241,6 +244,9 @@ export class SectionService {
     }
 
     async findPublicById(sectionId: string, courseId: string, accessLevel: string) {
+        const course = await this.courseRepo.findOne({ where: { course_id: courseId } });
+        if (!course?.content_enabled) return null;
+
         if (accessLevel === 'FULL') {
             return await this.sectionRepo.findOne({
                 where: {
